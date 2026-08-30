@@ -1,0 +1,23 @@
+# Secrets
+.env
+*.env
+key.env
+Doc/key.env
+
+# Local editor settings
+.vscode/
+
+# Reference repositories, not part of this project
+Sources/
+
+# Build outputs and caches
+target/
+build/
+dist/
+out/
+.gradle/
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
