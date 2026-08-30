@@ -4,6 +4,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!--
+        Spring Boot's parent supplies compatible library and plugin versions.
+        That means we can add Spring dependencies below without manually choosing
+        a version for each one.
+    -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -18,14 +23,17 @@
     <description>Clinic pre-visit coordination backend</description>
 
     <properties>
+        <!-- Compile against Java 25 so the project follows the build brief. -->
         <java.version>25</java.version>
     </properties>
 
     <dependencies>
+        <!-- Provides Spring MVC and the embedded Tomcat HTTP server. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
+        <!-- Provides JUnit and Spring's tools for testing HTTP endpoints. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
