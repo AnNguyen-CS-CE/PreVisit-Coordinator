@@ -16,7 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * MockMvc. MockMvc lets this test send a request to the controller in memory,
  * which keeps the test fast and checks the public HTTP contract.</p>
  */
-@WebMvcTest
+@WebMvcTest(HealthController.class)
 class HealthEndpointTest {
 
     @Autowired

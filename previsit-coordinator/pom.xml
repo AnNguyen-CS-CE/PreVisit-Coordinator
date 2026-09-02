@@ -33,6 +33,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
+        <!-- Provides standard request-field validation such as @NotBlank. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
         <!-- Provides JUnit and Spring's tools for testing HTTP endpoints. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
