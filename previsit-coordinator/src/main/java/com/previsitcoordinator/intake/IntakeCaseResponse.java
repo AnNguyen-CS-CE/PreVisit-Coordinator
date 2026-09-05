@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Public data returned after the application starts an intake case.
+ * Public data returned to callers about an intake case.
  */
 record IntakeCaseResponse(
         UUID caseId,
