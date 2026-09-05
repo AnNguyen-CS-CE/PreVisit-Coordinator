@@ -10,6 +10,9 @@ Doc/key.env
 # Reference repositories, not part of this project
 Sources/
 
+# Local learning notes, not for public submission
+doc/learning/
+
 # Build outputs and caches
 target/
 build/
