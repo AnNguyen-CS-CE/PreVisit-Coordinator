@@ -18,7 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest({IntakeCaseController.class, StaffAlertController.class})
-@Import({IntakeCaseService.class, MockAppointmentGateway.class})
+@Import({IntakeCaseService.class, MockAppointmentGateway.class, MockCallEAdapter.class})
 class IntakeCaseEndpointTest {
 
     @Autowired
@@ -83,6 +83,32 @@ class IntakeCaseEndpointTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.caseId").value(caseId))
                 .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_APPROVED"));
+    }
+
+    @Test
+    void startsAndRetrievesANonMedicalCallRunForAnIntakeCompleteCase() throws Exception {
+        String caseId = startCaseAndGetId();
+        submitNonEmergencyIntake(caseId);
+
+        String callRunResponse = mockMvc.perform(post("/api/intake-cases/{caseId}/call-runs", caseId))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.runId").isNotEmpty())
+                .andExpect(jsonPath("$.callRunStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.result.outcome").value("COMPLETED"))
+                .andExpect(jsonPath("$.result.callbackRequested").value(false))
+                .andExpect(jsonPath("$.transcript").doesNotExist())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        Matcher runIdMatcher = Pattern.compile("\\\"runId\\\":\\\"([^\\\"]+)\\\"")
+                .matcher(callRunResponse);
+        assertTrue(runIdMatcher.find());
+
+        mockMvc.perform(get("/api/intake-cases/{caseId}/call-runs/{runId}", caseId, runIdMatcher.group(1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.callRunStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.result.outcome").value("COMPLETED"))
+                .andExpect(jsonPath("$.transcript").doesNotExist());
     }
 
     @Test
@@ -308,6 +334,15 @@ class IntakeCaseEndpointTest {
         mockMvc.perform(get("/api/intake-cases/{caseId}", caseId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_HALTED"));
+    }
+
+    @Test
+    void refusesToStartACallRunForASchedulingHaltedCase() throws Exception {
+        String caseId = startCaseAndGetId();
+        submitEmergencyIntake(caseId);
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/call-runs", caseId))
+                .andExpect(status().isConflict());
     }
 
     @Test

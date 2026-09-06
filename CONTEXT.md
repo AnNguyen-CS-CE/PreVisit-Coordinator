@@ -55,3 +55,11 @@ _Avoid_: Scheduling approval, medical clearance, diagnosis
 **Alert Resolution Reason**:
 The fixed non-diagnostic category staff select when resolving an alert: care follow-up recorded, referred to another facility, or other. A reason is accompanied by a factual staff note.
 _Avoid_: Diagnosis, medical outcome, clinical recommendation
+
+**Call Run**:
+One recorded attempt to make a non-medical coordination call for an intake case. It identifies the provider-side run without retaining a call transcript in the intake case.
+_Avoid_: Intake submission, appointment confirmation, call transcript
+
+**Call Result**:
+A validated, fixed-form non-diagnostic outcome of a call run: completed, recipient unavailable, or callback requested. It never represents a diagnosis, clinical assessment, or free-form transcript.
+_Avoid_: Triage result, clinical note, raw call text

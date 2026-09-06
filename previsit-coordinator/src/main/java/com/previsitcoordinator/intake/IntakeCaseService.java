@@ -19,10 +19,13 @@ class IntakeCaseService {
 
     private final Map<UUID, IntakeCase> cases = new ConcurrentHashMap<>();
     private final Map<UUID, StaffAlert> staffAlerts = new ConcurrentHashMap<>();
+    private final Map<UUID, CallRun> callRuns = new ConcurrentHashMap<>();
     private final AppointmentGateway appointmentGateway;
+    private final CallEAdapter callEAdapter;
 
-    IntakeCaseService(AppointmentGateway appointmentGateway) {
+    IntakeCaseService(AppointmentGateway appointmentGateway, CallEAdapter callEAdapter) {
         this.appointmentGateway = appointmentGateway;
+        this.callEAdapter = callEAdapter;
     }
 
     IntakeCaseResponse startCase(CreateIntakeCaseRequest request) {
@@ -145,6 +148,49 @@ class IntakeCaseService {
         return toResponse(approvedCase);
     }
 
+    synchronized CallRunResponse startCallRun(UUID caseId) {
+        IntakeCase intakeCase = findIntakeCase(caseId);
+        if (intakeCase.caseStatus() != IntakeCaseStatus.INTAKE_COMPLETE
+                && intakeCase.caseStatus() != IntakeCaseStatus.SCHEDULING_APPROVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Intake case cannot start a coordination call");
+        }
+
+        ProviderCallRun providerCallRun = callEAdapter.startNonMedicalCoordinationCall(
+                intakeCase.demoPhoneNumber(),
+                intakeCase.intakeSubmission().preferredLanguage());
+        Instant now = Instant.now();
+        CallRun callRun = new CallRun(
+                UUID.randomUUID(),
+                intakeCase.caseId(),
+                providerCallRun.providerRunId(),
+                providerCallRun.callRunStatus(),
+                providerCallRun.result(),
+                now,
+                now);
+        callRuns.put(callRun.runId(), callRun);
+        return toCallRunResponse(callRun);
+    }
+
+    synchronized CallRunResponse findCallRun(UUID caseId, UUID runId) {
+        findIntakeCase(caseId);
+        CallRun callRun = callRuns.get(runId);
+        if (callRun == null || !callRun.caseId().equals(caseId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Call run not found");
+        }
+
+        ProviderCallRun providerCallRun = callEAdapter.findCallRun(callRun.providerRunId());
+        CallRun refreshedCallRun = new CallRun(
+                callRun.runId(),
+                callRun.caseId(),
+                callRun.providerRunId(),
+                providerCallRun.callRunStatus(),
+                providerCallRun.result(),
+                callRun.createdAt(),
+                Instant.now());
+        callRuns.put(runId, refreshedCallRun);
+        return toCallRunResponse(refreshedCallRun);
+    }
+
     List<AppointmentSlot> findAvailableSlots(UUID caseId) {
         IntakeCase intakeCase = cases.get(caseId);
         if (intakeCase == null) {
@@ -218,6 +264,23 @@ class IntakeCaseService {
                 intakeCase.patientReference(),
                 intakeCase.caseStatus(),
                 intakeCase.createdAt());
+    }
+
+    private IntakeCase findIntakeCase(UUID caseId) {
+        IntakeCase intakeCase = cases.get(caseId);
+        if (intakeCase == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Intake case not found");
+        }
+        return intakeCase;
+    }
+
+    private CallRunResponse toCallRunResponse(CallRun callRun) {
+        return new CallRunResponse(
+                callRun.runId(),
+                callRun.callRunStatus(),
+                callRun.result(),
+                callRun.createdAt(),
+                callRun.updatedAt());
     }
 
     private ActiveStaffAlertResponse toActiveAlertResponse(StaffAlert staffAlert) {

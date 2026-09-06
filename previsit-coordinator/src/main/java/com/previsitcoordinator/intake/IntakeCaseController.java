@@ -47,6 +47,17 @@ class IntakeCaseController {
         return intakeCaseService.approveScheduling(caseId);
     }
 
+    @PostMapping("/api/intake-cases/{caseId}/call-runs")
+    @ResponseStatus(HttpStatus.CREATED)
+    CallRunResponse startCallRun(@PathVariable UUID caseId) {
+        return intakeCaseService.startCallRun(caseId);
+    }
+
+    @GetMapping("/api/intake-cases/{caseId}/call-runs/{runId}")
+    CallRunResponse findCallRun(@PathVariable UUID caseId, @PathVariable UUID runId) {
+        return intakeCaseService.findCallRun(caseId, runId);
+    }
+
     @GetMapping("/api/intake-cases/{caseId}/available-slots")
     List<AppointmentSlot> findAvailableSlots(@PathVariable UUID caseId) {
         return intakeCaseService.findAvailableSlots(caseId);
