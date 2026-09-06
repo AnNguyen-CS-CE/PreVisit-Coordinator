@@ -29,5 +29,13 @@ A staff member responsible for tracking intake cases and arranging appointment t
 _Avoid_: Clinical responder
 
 **Staff Alert**:
-A notification that informs coordination staff that an intake case is scheduling halted and requires their awareness.
-_Avoid_: Diagnosis, triage result
+A durable coordination record that informs coordination staff that an intake case is scheduling halted and requires their awareness. It remains active until staff record an alert resolution.
+_Avoid_: Diagnosis, triage result, disposable notification
+
+**Alert Resolution**:
+A staff-recorded, non-diagnostic reason that moves a staff alert out of the active alert list. It does not change the intake case's scheduling-halted status or verify a medical outcome.
+_Avoid_: Scheduling approval, medical clearance, diagnosis
+
+**Alert Resolution Reason**:
+The fixed non-diagnostic category staff select when resolving an alert: care follow-up recorded, referred to another facility, or other. A reason is accompanied by a factual staff note.
+_Avoid_: Diagnosis, medical outcome, clinical recommendation

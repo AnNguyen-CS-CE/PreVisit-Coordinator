@@ -1,6 +1,8 @@
 package com.previsitcoordinator.intake;
 
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 class IntakeCaseService {
 
     private final Map<UUID, IntakeCase> cases = new ConcurrentHashMap<>();
+    private final Map<UUID, StaffAlert> staffAlerts = new ConcurrentHashMap<>();
 
     IntakeCaseResponse startCase(CreateIntakeCaseRequest request) {
         IntakeCase intakeCase = new IntakeCase(
@@ -65,8 +68,48 @@ class IntakeCaseService {
                 intakeSubmission);
 
         cases.put(caseId, submittedCase);
+        if (intakeSubmission.emergencyFlag()) {
+            StaffAlert staffAlert = new StaffAlert(
+                    UUID.randomUUID(),
+                    submittedCase.caseId(),
+                    submittedCase.patientReference(),
+                    Instant.now(),
+                    null);
+            staffAlerts.put(staffAlert.alertId(), staffAlert);
+        }
 
         return toResponse(submittedCase);
+    }
+
+    List<ActiveStaffAlertResponse> findActiveAlerts() {
+        return staffAlerts.values().stream()
+                .filter(staffAlert -> staffAlert.alertResolution() == null)
+                .sorted(Comparator.comparing(StaffAlert::createdAt))
+                .map(this::toActiveAlertResponse)
+                .toList();
+    }
+
+    synchronized void resolveStaffAlert(UUID alertId, ResolveStaffAlertRequest request) {
+        StaffAlert staffAlert = staffAlerts.get(alertId);
+        if (staffAlert == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Staff alert not found");
+        }
+        if (staffAlert.alertResolution() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Staff alert already resolved");
+        }
+
+        AlertResolution alertResolution = new AlertResolution(
+                request.reason(),
+                request.note(),
+                Instant.now());
+        StaffAlert resolvedAlert = new StaffAlert(
+                staffAlert.alertId(),
+                staffAlert.caseId(),
+                staffAlert.patientReference(),
+                staffAlert.createdAt(),
+                alertResolution);
+
+        staffAlerts.put(alertId, resolvedAlert);
     }
 
     synchronized IntakeCaseResponse approveScheduling(UUID caseId) {
@@ -97,5 +140,13 @@ class IntakeCaseService {
                 intakeCase.patientReference(),
                 intakeCase.caseStatus(),
                 intakeCase.createdAt());
+    }
+
+    private ActiveStaffAlertResponse toActiveAlertResponse(StaffAlert staffAlert) {
+        return new ActiveStaffAlertResponse(
+                staffAlert.alertId(),
+                staffAlert.caseId(),
+                staffAlert.patientReference(),
+                staffAlert.createdAt());
     }
 }

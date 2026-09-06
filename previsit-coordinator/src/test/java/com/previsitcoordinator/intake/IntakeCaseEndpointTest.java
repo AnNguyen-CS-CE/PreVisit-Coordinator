@@ -1,5 +1,6 @@
 package com.previsitcoordinator.intake;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -16,7 +17,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-@WebMvcTest(IntakeCaseController.class)
+@WebMvcTest({IntakeCaseController.class, StaffAlertController.class})
 @Import(IntakeCaseService.class)
 class IntakeCaseEndpointTest {
 
@@ -141,6 +142,100 @@ class IntakeCaseEndpointTest {
         mockMvc.perform(get("/api/intake-cases/{caseId}", caseId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_HALTED"));
+    }
+
+    @Test
+    void listsAnActiveStaffAlertForAnEmergencyFlaggedIntake() throws Exception {
+        String caseId = startCaseAndGetId();
+
+        submitEmergencyIntake(caseId);
+
+        String activeAlertsResponse = mockMvc.perform(get("/api/staff-alerts"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        Matcher alertMatcher = Pattern.compile(
+                        "\\{\\\"alertId\\\":\\\"[^\\\"]+\\\",\\\"caseId\\\":\\\"" + caseId
+                                + "\\\",\\\"patientReference\\\":\\\"demo-patient-001\\\",\\\"createdAt\\\":\\\"[^\\\"]+\\\"\\}")
+                .matcher(activeAlertsResponse);
+        assertTrue(alertMatcher.find());
+        assertFalse(activeAlertsResponse.contains("\"demoPhoneNumber\""));
+    }
+
+    @Test
+    void resolvesAnAlertWithoutRemovingTheRelatedSchedulingHalt() throws Exception {
+        String caseId = startCaseAndGetId();
+        submitEmergencyIntake(caseId);
+        String alertId = findActiveAlertIdForCase(caseId);
+
+        mockMvc.perform(post("/api/staff-alerts/{alertId}/resolution", alertId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reason": "CARE_FOLLOW_UP_RECORDED",
+                                  "note": "Staff follow-up recorded."
+                                }
+                                """))
+                .andExpect(status().isNoContent());
+
+        String activeAlertsResponse = mockMvc.perform(get("/api/staff-alerts"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertFalse(activeAlertsResponse.contains("\"alertId\":\"" + alertId + "\""));
+
+        mockMvc.perform(get("/api/intake-cases/{caseId}", caseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_HALTED"));
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/scheduling-approval", caseId))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void rejectsAnAlertResolutionWithoutAReason() throws Exception {
+        mockMvc.perform(post(
+                        "/api/staff-alerts/{alertId}/resolution",
+                        "8bb6d5a3-4e6e-4f1a-b407-30f4556254c5")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "note": "Staff follow-up recorded."
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsAnAlertResolutionWithABlankNote() throws Exception {
+        mockMvc.perform(post(
+                        "/api/staff-alerts/{alertId}/resolution",
+                        "8bb6d5a3-4e6e-4f1a-b407-30f4556254c5")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reason": "OTHER",
+                                  "note": "   "
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void returnsNotFoundWhenResolvingAnUnknownStaffAlert() throws Exception {
+        mockMvc.perform(post(
+                        "/api/staff-alerts/{alertId}/resolution",
+                        "8bb6d5a3-4e6e-4f1a-b407-30f4556254c5")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reason": "OTHER",
+                                  "note": "Staff follow-up recorded."
+                                }
+                                """))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -322,5 +417,34 @@ class IntakeCaseEndpointTest {
                                 }
                                 """))
                 .andExpect(status().isOk());
+    }
+
+    private void submitEmergencyIntake(String caseId) throws Exception {
+        mockMvc.perform(post("/api/intake-cases/{caseId}/intake-submission", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reasonForVisit": "Immediate concern",
+                                  "preferredLanguage": "English",
+                                  "mobilityAssistanceNeeded": true,
+                                  "emergencyFlag": true
+                                }
+                                """))
+                .andExpect(status().isOk());
+    }
+
+    private String findActiveAlertIdForCase(String caseId) throws Exception {
+        String activeAlertsResponse = mockMvc.perform(get("/api/staff-alerts"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Matcher alertIdMatcher = Pattern.compile(
+                        "\\{\\\"alertId\\\":\\\"([^\\\"]+)\\\",\\\"caseId\\\":\\\"" + caseId + "\\\"")
+                .matcher(activeAlertsResponse);
+        assertTrue(alertIdMatcher.find());
+
+        return alertIdMatcher.group(1);
     }
 }
