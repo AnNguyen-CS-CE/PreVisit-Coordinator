@@ -42,29 +42,146 @@ class IntakeCaseEndpointTest {
 
     @Test
     void retrievesAnExistingIntakeCase() throws Exception {
-        String createdCaseResponse = mockMvc.perform(post("/api/intake-cases")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "patientReference": "demo-patient-001",
-                                  "demoPhoneNumber": "+15551234567"
-                                }
-                                """))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        Matcher caseIdMatcher = Pattern.compile("\\\"caseId\\\":\\\"([^\\\"]+)\\\"")
-                .matcher(createdCaseResponse);
-        assertTrue(caseIdMatcher.find());
-        String caseId = caseIdMatcher.group(1);
+        String caseId = startCaseAndGetId();
 
         mockMvc.perform(get("/api/intake-cases/{caseId}", caseId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.caseId").value(caseId))
                 .andExpect(jsonPath("$.patientReference").value("demo-patient-001"))
                 .andExpect(jsonPath("$.caseStatus").value("STAFF_STARTED"));
+    }
+
+    @Test
+    void submitsANonEmergencyIntakeAndMarksCaseIntakeComplete() throws Exception {
+        String caseId = startCaseAndGetId();
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/intake-submission", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reasonForVisit": "Routine follow-up",
+                                  "preferredLanguage": "English",
+                                  "mobilityAssistanceNeeded": false,
+                                  "emergencyFlag": false
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseId").value(caseId))
+                .andExpect(jsonPath("$.patientReference").value("demo-patient-001"))
+                .andExpect(jsonPath("$.caseStatus").value("INTAKE_COMPLETE"))
+                .andExpect(jsonPath("$.createdAt").isNotEmpty());
+    }
+
+    @Test
+    void submitsAnEmergencyFlaggedIntakeAndHaltsScheduling() throws Exception {
+        String caseId = startCaseAndGetId();
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/intake-submission", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reasonForVisit": "Immediate concern",
+                                  "preferredLanguage": "English",
+                                  "mobilityAssistanceNeeded": true,
+                                  "emergencyFlag": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_HALTED"));
+
+        mockMvc.perform(get("/api/intake-cases/{caseId}", caseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_HALTED"));
+    }
+
+    @Test
+    void rejectsAnIntakeSubmissionWithABlankReasonForVisit() throws Exception {
+        mockMvc.perform(post(
+                        "/api/intake-cases/{caseId}/intake-submission",
+                        "8bb6d5a3-4e6e-4f1a-b407-30f4556254c5")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reasonForVisit": "   ",
+                                  "preferredLanguage": "English",
+                                  "mobilityAssistanceNeeded": false,
+                                  "emergencyFlag": false
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsAnIntakeSubmissionWithABlankPreferredLanguage() throws Exception {
+        mockMvc.perform(post(
+                        "/api/intake-cases/{caseId}/intake-submission",
+                        "8bb6d5a3-4e6e-4f1a-b407-30f4556254c5")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reasonForVisit": "Routine follow-up",
+                                  "preferredLanguage": "   ",
+                                  "mobilityAssistanceNeeded": false,
+                                  "emergencyFlag": false
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsAnIntakeSubmissionWithoutMobilityAssistanceNeeded() throws Exception {
+        mockMvc.perform(post(
+                        "/api/intake-cases/{caseId}/intake-submission",
+                        "8bb6d5a3-4e6e-4f1a-b407-30f4556254c5")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reasonForVisit": "Routine follow-up",
+                                  "preferredLanguage": "English",
+                                  "emergencyFlag": false
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsAnIntakeSubmissionWithoutAnEmergencyFlag() throws Exception {
+        mockMvc.perform(post(
+                        "/api/intake-cases/{caseId}/intake-submission",
+                        "8bb6d5a3-4e6e-4f1a-b407-30f4556254c5")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reasonForVisit": "Routine follow-up",
+                                  "preferredLanguage": "English",
+                                  "mobilityAssistanceNeeded": false
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsASecondIntakeSubmissionForTheSameCase() throws Exception {
+        String caseId = startCaseAndGetId();
+
+        String intakeSubmission = """
+                {
+                  "reasonForVisit": "Routine follow-up",
+                  "preferredLanguage": "English",
+                  "mobilityAssistanceNeeded": false,
+                  "emergencyFlag": false
+                }
+                """;
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/intake-submission", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(intakeSubmission))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/intake-submission", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(intakeSubmission))
+                .andExpect(status().isConflict());
     }
 
     @Test
@@ -97,5 +214,26 @@ class IntakeCaseEndpointTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    private String startCaseAndGetId() throws Exception {
+        String createdCaseResponse = mockMvc.perform(post("/api/intake-cases")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "patientReference": "demo-patient-001",
+                                  "demoPhoneNumber": "+15551234567"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Matcher caseIdMatcher = Pattern.compile("\\\"caseId\\\":\\\"([^\\\"]+)\\\"")
+                .matcher(createdCaseResponse);
+        assertTrue(caseIdMatcher.find());
+
+        return caseIdMatcher.group(1);
     }
 }

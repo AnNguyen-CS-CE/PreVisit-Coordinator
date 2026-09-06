@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Handles HTTP actions for creating and retrieving intake cases.
+ * Handles HTTP actions for starting, retrieving, and submitting intake cases.
  */
 @RestController
 class IntakeCaseController {
@@ -32,5 +32,12 @@ class IntakeCaseController {
     @GetMapping("/api/intake-cases/{caseId}")
     IntakeCaseResponse findCase(@PathVariable UUID caseId) {
         return intakeCaseService.findCase(caseId);
+    }
+
+    @PostMapping("/api/intake-cases/{caseId}/intake-submission")
+    IntakeCaseResponse submitIntake(
+            @PathVariable UUID caseId,
+            @Valid @RequestBody SubmitIntakeRequest request) {
+        return intakeCaseService.submitIntake(caseId, request);
     }
 }
