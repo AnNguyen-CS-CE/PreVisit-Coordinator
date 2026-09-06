@@ -40,4 +40,9 @@ class IntakeCaseController {
             @Valid @RequestBody SubmitIntakeRequest request) {
         return intakeCaseService.submitIntake(caseId, request);
     }
+
+    @PostMapping("/api/intake-cases/{caseId}/scheduling-approval")
+    IntakeCaseResponse approveScheduling(@PathVariable UUID caseId) {
+        return intakeCaseService.approveScheduling(caseId);
+    }
 }

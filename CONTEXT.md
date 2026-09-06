@@ -19,3 +19,15 @@ _Avoid_: Scheduled, confirmed
 **Scheduling Halted**:
 The status of an intake case with an emergency flag, which prevents scheduling in this application.
 _Avoid_: Emergency diagnosis, triage result
+
+**Scheduling Approval**:
+The status of an intake-complete case that coordination staff may progress toward arranging an appointment.
+_Avoid_: Appointment booked, appointment confirmed
+
+**Coordination Staff**:
+A staff member responsible for tracking intake cases and arranging appointment times through calls with patients.
+_Avoid_: Clinical responder
+
+**Staff Alert**:
+A notification that informs coordination staff that an intake case is scheduling halted and requires their awareness.
+_Avoid_: Diagnosis, triage result

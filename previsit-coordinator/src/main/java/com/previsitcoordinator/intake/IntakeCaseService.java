@@ -69,6 +69,28 @@ class IntakeCaseService {
         return toResponse(submittedCase);
     }
 
+    synchronized IntakeCaseResponse approveScheduling(UUID caseId) {
+        IntakeCase intakeCase = cases.get(caseId);
+        if (intakeCase == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Intake case not found");
+        }
+        if (intakeCase.caseStatus() != IntakeCaseStatus.INTAKE_COMPLETE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Intake case cannot be approved for scheduling");
+        }
+
+        IntakeCase approvedCase = new IntakeCase(
+                intakeCase.caseId(),
+                intakeCase.patientReference(),
+                intakeCase.demoPhoneNumber(),
+                IntakeCaseStatus.SCHEDULING_APPROVED,
+                intakeCase.createdAt(),
+                intakeCase.intakeSubmission());
+
+        cases.put(caseId, approvedCase);
+
+        return toResponse(approvedCase);
+    }
+
     private IntakeCaseResponse toResponse(IntakeCase intakeCase) {
         return new IntakeCaseResponse(
                 intakeCase.caseId(),

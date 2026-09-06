@@ -6,5 +6,6 @@ package com.previsitcoordinator.intake;
 enum IntakeCaseStatus {
     STAFF_STARTED,
     INTAKE_COMPLETE,
+    SCHEDULING_APPROVED,
     SCHEDULING_HALTED
 }

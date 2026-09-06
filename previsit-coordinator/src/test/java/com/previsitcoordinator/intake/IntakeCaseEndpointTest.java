@@ -73,6 +73,55 @@ class IntakeCaseEndpointTest {
     }
 
     @Test
+    void approvesAnIntakeCompleteCaseForScheduling() throws Exception {
+        String caseId = startCaseAndGetId();
+
+        submitNonEmergencyIntake(caseId);
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/scheduling-approval", caseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseId").value(caseId))
+                .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_APPROVED"));
+    }
+
+    @Test
+    void refusesSchedulingApprovalBeforeIntakeIsComplete() throws Exception {
+        String caseId = startCaseAndGetId();
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/scheduling-approval", caseId))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(get("/api/intake-cases/{caseId}", caseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseStatus").value("STAFF_STARTED"));
+    }
+
+    @Test
+    void refusesASecondSchedulingApprovalForTheSameCase() throws Exception {
+        String caseId = startCaseAndGetId();
+
+        submitNonEmergencyIntake(caseId);
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/scheduling-approval", caseId))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/scheduling-approval", caseId))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(get("/api/intake-cases/{caseId}", caseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_APPROVED"));
+    }
+
+    @Test
+    void returnsNotFoundWhenApprovingAnUnknownIntakeCase() throws Exception {
+        mockMvc.perform(post(
+                        "/api/intake-cases/{caseId}/scheduling-approval",
+                        "8bb6d5a3-4e6e-4f1a-b407-30f4556254c5"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void submitsAnEmergencyFlaggedIntakeAndHaltsScheduling() throws Exception {
         String caseId = startCaseAndGetId();
 
@@ -88,6 +137,30 @@ class IntakeCaseEndpointTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_HALTED"));
+
+        mockMvc.perform(get("/api/intake-cases/{caseId}", caseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_HALTED"));
+    }
+
+    @Test
+    void refusesSchedulingApprovalForASchedulingHaltedCase() throws Exception {
+        String caseId = startCaseAndGetId();
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/intake-submission", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reasonForVisit": "Immediate concern",
+                                  "preferredLanguage": "English",
+                                  "mobilityAssistanceNeeded": true,
+                                  "emergencyFlag": true
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/scheduling-approval", caseId))
+                .andExpect(status().isConflict());
 
         mockMvc.perform(get("/api/intake-cases/{caseId}", caseId))
                 .andExpect(status().isOk())
@@ -235,5 +308,19 @@ class IntakeCaseEndpointTest {
         assertTrue(caseIdMatcher.find());
 
         return caseIdMatcher.group(1);
+    }
+
+    private void submitNonEmergencyIntake(String caseId) throws Exception {
+        mockMvc.perform(post("/api/intake-cases/{caseId}/intake-submission", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reasonForVisit": "Routine follow-up",
+                                  "preferredLanguage": "English",
+                                  "mobilityAssistanceNeeded": false,
+                                  "emergencyFlag": false
+                                }
+                                """))
+                .andExpect(status().isOk());
     }
 }
