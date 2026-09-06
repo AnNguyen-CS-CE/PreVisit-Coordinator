@@ -1,5 +1,6 @@
 package com.previsitcoordinator.intake;
 
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -44,5 +45,26 @@ class IntakeCaseController {
     @PostMapping("/api/intake-cases/{caseId}/scheduling-approval")
     IntakeCaseResponse approveScheduling(@PathVariable UUID caseId) {
         return intakeCaseService.approveScheduling(caseId);
+    }
+
+    @GetMapping("/api/intake-cases/{caseId}/available-slots")
+    List<AppointmentSlot> findAvailableSlots(@PathVariable UUID caseId) {
+        return intakeCaseService.findAvailableSlots(caseId);
+    }
+
+    @PostMapping("/api/intake-cases/{caseId}/slot-proposal")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void proposeSlot(
+            @PathVariable UUID caseId,
+            @Valid @RequestBody ProposeSlotRequest request) {
+        intakeCaseService.proposeSlot(caseId, request);
+    }
+
+    @PostMapping("/api/intake-cases/{caseId}/appointment-confirmation")
+    @ResponseStatus(HttpStatus.CREATED)
+    Appointment confirmAppointment(
+            @PathVariable UUID caseId,
+            @Valid @RequestBody ConfirmAppointmentRequest request) {
+        return intakeCaseService.confirmAppointment(caseId, request);
     }
 }

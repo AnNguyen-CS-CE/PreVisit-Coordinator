@@ -19,6 +19,11 @@ class IntakeCaseService {
 
     private final Map<UUID, IntakeCase> cases = new ConcurrentHashMap<>();
     private final Map<UUID, StaffAlert> staffAlerts = new ConcurrentHashMap<>();
+    private final AppointmentGateway appointmentGateway;
+
+    IntakeCaseService(AppointmentGateway appointmentGateway) {
+        this.appointmentGateway = appointmentGateway;
+    }
 
     IntakeCaseResponse startCase(CreateIntakeCaseRequest request) {
         IntakeCase intakeCase = new IntakeCase(
@@ -27,6 +32,8 @@ class IntakeCaseService {
                 request.demoPhoneNumber(),
                 IntakeCaseStatus.STAFF_STARTED,
                 Instant.now(),
+                null,
+                null,
                 null);
 
         cases.put(intakeCase.caseId(), intakeCase);
@@ -65,7 +72,9 @@ class IntakeCaseService {
                 intakeCase.demoPhoneNumber(),
                 caseStatus,
                 intakeCase.createdAt(),
-                intakeSubmission);
+                intakeSubmission,
+                intakeCase.proposedSlot(),
+                intakeCase.appointment());
 
         cases.put(caseId, submittedCase);
         if (intakeSubmission.emergencyFlag()) {
@@ -127,11 +136,80 @@ class IntakeCaseService {
                 intakeCase.demoPhoneNumber(),
                 IntakeCaseStatus.SCHEDULING_APPROVED,
                 intakeCase.createdAt(),
-                intakeCase.intakeSubmission());
+                intakeCase.intakeSubmission(),
+                intakeCase.proposedSlot(),
+                intakeCase.appointment());
 
         cases.put(caseId, approvedCase);
 
         return toResponse(approvedCase);
+    }
+
+    List<AppointmentSlot> findAvailableSlots(UUID caseId) {
+        IntakeCase intakeCase = cases.get(caseId);
+        if (intakeCase == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Intake case not found");
+        }
+        if (intakeCase.caseStatus() != IntakeCaseStatus.SCHEDULING_APPROVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Intake case cannot view available slots");
+        }
+
+        return appointmentGateway.findAvailableSlots(intakeCase);
+    }
+
+    synchronized void proposeSlot(UUID caseId, ProposeSlotRequest request) {
+        IntakeCase intakeCase = cases.get(caseId);
+        if (intakeCase == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Intake case not found");
+        }
+        if (intakeCase.caseStatus() != IntakeCaseStatus.SCHEDULING_APPROVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Intake case cannot propose an appointment slot");
+        }
+        AppointmentSlot proposedSlot = appointmentGateway.findAvailableSlots(intakeCase).stream()
+                .filter(slot -> slot.slotId().equals(request.slotId()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Appointment slot is not available"));
+
+        IntakeCase caseWithProposedSlot = new IntakeCase(
+                intakeCase.caseId(),
+                intakeCase.patientReference(),
+                intakeCase.demoPhoneNumber(),
+                intakeCase.caseStatus(),
+                intakeCase.createdAt(),
+                intakeCase.intakeSubmission(),
+                proposedSlot,
+                intakeCase.appointment());
+        cases.put(caseId, caseWithProposedSlot);
+    }
+
+    synchronized Appointment confirmAppointment(UUID caseId, ConfirmAppointmentRequest request) {
+        IntakeCase intakeCase = cases.get(caseId);
+        if (intakeCase == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Intake case not found");
+        }
+        if (intakeCase.caseStatus() != IntakeCaseStatus.SCHEDULING_APPROVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Intake case cannot confirm an appointment");
+        }
+        if (intakeCase.appointment() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Appointment already scheduled");
+        }
+        if (intakeCase.proposedSlot() == null || !intakeCase.proposedSlot().slotId().equals(request.slotId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Appointment confirmation must match the proposed slot");
+        }
+
+        Appointment appointment = appointmentGateway.bookConfirmedAppointment(intakeCase, intakeCase.proposedSlot());
+        IntakeCase caseWithAppointment = new IntakeCase(
+                intakeCase.caseId(),
+                intakeCase.patientReference(),
+                intakeCase.demoPhoneNumber(),
+                intakeCase.caseStatus(),
+                intakeCase.createdAt(),
+                intakeCase.intakeSubmission(),
+                intakeCase.proposedSlot(),
+                appointment);
+        cases.put(caseId, caseWithAppointment);
+
+        return appointment;
     }
 
     private IntakeCaseResponse toResponse(IntakeCase intakeCase) {

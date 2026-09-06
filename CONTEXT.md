@@ -24,6 +24,22 @@ _Avoid_: Emergency diagnosis, triage result
 The status of an intake-complete case that coordination staff may progress toward arranging an appointment.
 _Avoid_: Appointment booked, appointment confirmed
 
+**Appointment Slot**:
+One exact mock time offered for an approved intake case, identified by its start and end time, provider, location, and service type.
+_Avoid_: Appointment, confirmed appointment
+
+**Proposed Slot**:
+The one available appointment slot selected for discussion with the patient. It records intent only and does not create an appointment.
+_Avoid_: Appointment booked, appointment confirmed
+
+**Appointment Confirmation**:
+An explicit `true` confirmation of the exact previously proposed appointment slot. It is required before the application creates an appointment.
+_Avoid_: Implied consent, slot selection
+
+**Appointment**:
+A scheduled coordination record created only after an appointment confirmation for the exact proposed slot.
+_Avoid_: Proposed slot, scheduling approval
+
 **Coordination Staff**:
 A staff member responsible for tracking intake cases and arranging appointment times through calls with patients.
 _Avoid_: Clinical responder

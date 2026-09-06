@@ -12,5 +12,7 @@ record IntakeCase(
         String demoPhoneNumber,
         IntakeCaseStatus caseStatus,
         Instant createdAt,
-        IntakeSubmission intakeSubmission) {
+        IntakeSubmission intakeSubmission,
+        AppointmentSlot proposedSlot,
+        Appointment appointment) {
 }

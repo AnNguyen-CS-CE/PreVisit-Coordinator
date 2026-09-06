@@ -18,7 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest({IntakeCaseController.class, StaffAlertController.class})
-@Import(IntakeCaseService.class)
+@Import({IntakeCaseService.class, MockAppointmentGateway.class})
 class IntakeCaseEndpointTest {
 
     @Autowired
@@ -83,6 +83,172 @@ class IntakeCaseEndpointTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.caseId").value(caseId))
                 .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_APPROVED"));
+    }
+
+    @Test
+    void listsMockAvailableSlotsForASchedulingApprovedCase() throws Exception {
+        String caseId = startCaseAndGetId();
+        submitNonEmergencyIntake(caseId);
+        approveScheduling(caseId);
+
+        mockMvc.perform(get("/api/intake-cases/{caseId}/available-slots", caseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].slotId").isNotEmpty())
+                .andExpect(jsonPath("$[0].startsAt").isNotEmpty())
+                .andExpect(jsonPath("$[0].endsAt").isNotEmpty())
+                .andExpect(jsonPath("$[0].providerName").isNotEmpty())
+                .andExpect(jsonPath("$[0].locationName").isNotEmpty())
+                .andExpect(jsonPath("$[0].serviceType").isNotEmpty());
+    }
+
+    @Test
+    void recordsAProposedSlotWithoutCreatingAnAppointment() throws Exception {
+        String caseId = startCaseAndGetId();
+        submitNonEmergencyIntake(caseId);
+        approveScheduling(caseId);
+        String slotId = firstAvailableSlotId(caseId);
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/slot-proposal", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "slotId": "%s"
+                                }
+                                """.formatted(slotId)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/intake-cases/{caseId}", caseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseStatus").value("SCHEDULING_APPROVED"));
+    }
+
+    @Test
+    void refusesConfirmationUnlessTheExactProposedSlotIsExplicitlyConfirmed() throws Exception {
+        String caseId = startCaseAndGetId();
+        submitNonEmergencyIntake(caseId);
+        approveScheduling(caseId);
+        String slotId = firstAvailableSlotId(caseId);
+        proposeSlot(caseId, slotId);
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/appointment-confirmation", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "slotId": "%s",
+                                  "confirmed": false
+                                }
+                                """.formatted(slotId)))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/appointment-confirmation", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "slotId": "%s"
+                                }
+                                """.formatted(slotId)))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/appointment-confirmation", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "slotId": "8bb6d5a3-4e6e-4f1a-b407-30f4556254c5",
+                                  "confirmed": true
+                                }
+                                """))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/appointment-confirmation", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "slotId": "%s",
+                                  "confirmed": true
+                                }
+                                """.formatted(slotId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.appointmentId").isNotEmpty())
+                .andExpect(jsonPath("$.patientReference").value("demo-patient-001"))
+                .andExpect(jsonPath("$.status").value("SCHEDULED"))
+                .andExpect(jsonPath("$.slot.slotId").value(slotId));
+    }
+
+    @Test
+    void refusesAllAppointmentActionsForASchedulingHaltedCase() throws Exception {
+        String caseId = startCaseAndGetId();
+        submitEmergencyIntake(caseId);
+
+        mockMvc.perform(get("/api/intake-cases/{caseId}/available-slots", caseId))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/slot-proposal", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "slotId": "42c5ee1d-93e2-465b-905f-cc632031ed05"
+                                }
+                                """))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/appointment-confirmation", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "slotId": "42c5ee1d-93e2-465b-905f-cc632031ed05",
+                                  "confirmed": true
+                                }
+                                """))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void returnsNotFoundWhenListingSlotsForAnUnknownIntakeCase() throws Exception {
+        mockMvc.perform(get(
+                        "/api/intake-cases/{caseId}/available-slots",
+                        "8bb6d5a3-4e6e-4f1a-b407-30f4556254c5"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void rejectsASlotProposalWithoutASlotId() throws Exception {
+        String caseId = startCaseAndGetId();
+        submitNonEmergencyIntake(caseId);
+        approveScheduling(caseId);
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/slot-proposal", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void refusesASecondAppointmentConfirmationForTheSameCase() throws Exception {
+        String caseId = startCaseAndGetId();
+        submitNonEmergencyIntake(caseId);
+        approveScheduling(caseId);
+        String slotId = firstAvailableSlotId(caseId);
+        proposeSlot(caseId, slotId);
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/appointment-confirmation", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "slotId": "%s",
+                                  "confirmed": true
+                                }
+                                """.formatted(slotId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/intake-cases/{caseId}/appointment-confirmation", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "slotId": "%s",
+                                  "confirmed": true
+                                }
+                                """.formatted(slotId)))
+                .andExpect(status().isConflict());
     }
 
     @Test
@@ -417,6 +583,35 @@ class IntakeCaseEndpointTest {
                                 }
                                 """))
                 .andExpect(status().isOk());
+    }
+
+    private void approveScheduling(String caseId) throws Exception {
+        mockMvc.perform(post("/api/intake-cases/{caseId}/scheduling-approval", caseId))
+                .andExpect(status().isOk());
+    }
+
+    private String firstAvailableSlotId(String caseId) throws Exception {
+        String availableSlotsResponse = mockMvc.perform(get("/api/intake-cases/{caseId}/available-slots", caseId))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        Matcher slotIdMatcher = Pattern.compile("\\\"slotId\\\":\\\"([^\\\"]+)\\\"")
+                .matcher(availableSlotsResponse);
+        assertTrue(slotIdMatcher.find());
+
+        return slotIdMatcher.group(1);
+    }
+
+    private void proposeSlot(String caseId, String slotId) throws Exception {
+        mockMvc.perform(post("/api/intake-cases/{caseId}/slot-proposal", caseId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "slotId": "%s"
+                                }
+                                """.formatted(slotId)))
+                .andExpect(status().isNoContent());
     }
 
     private void submitEmergencyIntake(String caseId) throws Exception {
